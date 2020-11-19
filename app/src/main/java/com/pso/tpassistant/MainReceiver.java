@@ -7,7 +7,6 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
-import android.os.Handler;
 import android.util.Log;
 
 import androidx.core.content.ContextCompat;
@@ -15,35 +14,36 @@ import androidx.core.content.ContextCompat;
 import java.util.Calendar;
 
 public class MainReceiver extends BroadcastReceiver {
-    private static final String TAG = MainReceiver.class.getSimpleName();
-    private final String TEST_PHONE_SERVICE_PACKAGE = "com.pso.testphone.services.MainService";
-    private final String TEST_PHONE_ACTIVITY_PACKAGE = "com.pso.testphone.MainActivity";
-    private static final String CHECK_EXTRA = "CHECK";
-    private final int MINUTE_ALARM_CODE = 2;
-    private Handler handler;
-    private Context context;
+    public static final String TAG = MainReceiver.class.getSimpleName();
+    private static final String TEST_PHONE_RECEIVER_CLASS = "com.pso.testphone.recervers.SystemBroadcastReceiver";
+    private static final String TEST_PHONE_PACKAGE = "com.pso.testphone";
+    public final static long TIME_DELAY_DEF = 1500;
+    private static long delayTime = TIME_DELAY_DEF;
+
+    private static final String ALARM_INTENT_FROM_AS = "alarmIntentFromAssistant";
+    public static final String TIME_EXTRA = "time_extra";
+    public static final String VER_EXTRA = "ver_extra";
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        Log.e(TAG, "onReceive = Action = " + intent.getAction());
-        createAlarm(context);
-        this.context = context;
-        if(handler == null){
-            handler = new Handler();
+        String extraLong = intent.getStringExtra(TIME_EXTRA);
+        if(extraLong != null && !extraLong.isEmpty()){
+            delayTime = Long.parseLong(extraLong);
+        }else {
+            sendDirectNotification(context);
         }
-        handler.post(h);
+        Log.e(TAG, "onReceive = Action = " + intent.getAction() + ", delay time = " + delayTime);
+
+        createAlarm(context);
+        startService(context, delayTime);
     }
 
-    Runnable h = new Runnable() {
-        @Override
-        public void run() {
-            if(context != null){
-                handler.removeCallbacksAndMessages(h);
-                startTestPhoneService(context);
-                handler.postDelayed(h, 1000);
-            }
-        }
-    };
+    private void startService(Context context, long time){
+        Log.e(TAG, "startService");
+        Intent startServiceIntent = new Intent(context, MainService.class);
+        startServiceIntent.putExtra(TIME_EXTRA, String.valueOf(time));
+        ContextCompat.startForegroundService(context, startServiceIntent);
+    }
 
     public static void startTestPhoneActivity(Context context) {
         Intent intent = new Intent();
@@ -52,23 +52,30 @@ public class MainReceiver extends BroadcastReceiver {
         ContextCompat.startForegroundService(context, intent);
     }
 
-    public static void startTestPhoneService(Context context) {
+    public static void sentBroadcastAlarm(Context context){
         Intent intent = new Intent();
-        intent.setComponent(new ComponentName("com.pso.testphone", "com.pso.testphone.services.MainService"));
-        intent.getStringExtra(CHECK_EXTRA);
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        ContextCompat.startForegroundService(context, intent);
+        intent.setAction(ALARM_INTENT_FROM_AS);
+        intent.addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES);
+        intent.putExtra(TIME_EXTRA, delayTime);
+        intent.putExtra(VER_EXTRA, BuildConfig.VERSION_NAME);
+        context.sendBroadcast(intent);
     }
 
-    private void createAlarm(Context context) {
+    public static void sendDirectNotification(Context context) {
+        Intent i = new Intent();
+        i.setComponent(new ComponentName(TEST_PHONE_PACKAGE, TEST_PHONE_RECEIVER_CLASS));
+        context.sendBroadcast(i);
+    }
+
+    public static void createAlarm(Context context) {
         Log.e(TAG, "Creating alarm ");
         Calendar calendar = Calendar.getInstance();
         calendar.setTimeInMillis(System.currentTimeMillis());
-        calendar.add(Calendar.MINUTE, MINUTE_ALARM_CODE);
+        calendar.add(Calendar.SECOND, 15);
         sendAlarm(context, calendar.getTimeInMillis());
     }
 
-    private void sendAlarm(Context context, long time) {
+    private static void sendAlarm(Context context, long time) {
         AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         Intent alarmIntent = new Intent(context, MainReceiver.class);
         PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 0, alarmIntent, PendingIntent.FLAG_UPDATE_CURRENT);
@@ -77,6 +84,6 @@ public class MainReceiver extends BroadcastReceiver {
         }else{
             alarmManager.set(AlarmManager.RTC, time, pendingIntent);
         }
-        Log.e(TAG, "Alarm crated!");
+        Log.e(TAG, "Alarm created!");
     }
 }
